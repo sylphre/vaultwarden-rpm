@@ -1,7 +1,8 @@
 # Based on vaultwarden Dockerfile
 
-# e.g., almalinux:9
-ARG base_image
+# e.g., quay.io/almalinuxorg/almalinux:9
+# A default is needed here, otherwise buildkit warns about an empty FROM.
+ARG base_image=quay.io/almalinuxorg/almalinux:9
 # Toolchain is pulled through rustup: the rust-toolset stream shipped in the
 # AlmaLinux AppStream lags behind what recent vaultwarden releases require.
 ARG rust_version=1.89.0

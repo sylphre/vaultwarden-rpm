@@ -80,6 +80,8 @@ Both packages are built by the `build.yaml` workflow, but can be built by hand:
 
 ```bash
 # server: compiles vaultwarden in an almalinux:9 container, then runs rpmbuild
+# the base image is pulled from quay.io, then ECR Public, then Docker Hub;
+# override the list with ALMA_REGISTRIES if needed
 cd vaultwarden/
 VW_SERVER_VERSION=v1.37.0 ALMA_TARGET_VERSION=9 ./build-in-docker.sh
 
