@@ -1,10 +1,14 @@
 import datetime
 import glob
+import os
 import re
 import os.path
 
 
 # generates the index page for the repository
+
+
+PAGES_URL = os.environ.get("PAGES_URL", "https://sylphre.github.io/vaultwarden-rpm")
 
 
 EL_RELEASES = {
@@ -15,7 +19,7 @@ ARCHITECTURES = [ "x86_64" ]
 # vaultwarden-web-vault is noarch, but published next to the x86_64 packages
 PACKAGE_ARCH = { "vaultwarden": "x86_64", "vaultwarden-web-vault": "noarch" }
 
-IGNORED_PATHS = set([ "repodata", "index.html", "404.html" ])
+IGNORED_PATHS = set([ "repodata", "index.html", "404.html", ".git", ".nojekyll" ])
 
 
 def version_key(filename):
@@ -30,11 +34,15 @@ def version_key(filename):
 latest_versions = {}
 for release in EL_RELEASES:
     for arch in ARCHITECTURES:
-        latest_versions[(release, arch)] = [
-            sorted(glob.glob(f"el/{release}/{arch}/{package}-[0-9]*.{PACKAGE_ARCH[package]}.rpm"),
-                   key=version_key)[-1]
-            for package in ("vaultwarden", "vaultwarden-web-vault")
-        ]
+        newest = []
+        for package in ("vaultwarden", "vaultwarden-web-vault"):
+            files = sorted(glob.glob(f"el/{release}/{arch}/{package}-[0-9]*.{PACKAGE_ARCH[package]}.rpm"),
+                           key=version_key)
+            if files:
+                newest.append(files[-1])
+        # a release that has not been built yet is simply not listed
+        if newest:
+            latest_versions[(release, arch)] = newest
 
 
 print("""
@@ -134,7 +142,7 @@ for release, info in EL_RELEASES.items():
         print("""
 <p>To install Vaultwarden and add this repository, run this for """ + f'{info["name"]} (el{release})' + """:</p>
 <pre>
-curl -sSfL https://vaultwarden-rpm.pages.dev/el/""" + release + """/install.sh | sudo bash
+curl -sSfL """ + PAGES_URL + """/el/""" + release + """/install.sh | sudo bash
 sudo dnf install vaultwarden
 </pre>
 """)

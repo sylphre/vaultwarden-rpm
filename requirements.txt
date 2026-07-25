@@ -1,2 +1,1 @@
 github3.py==4.0.1
-awscli==1.33.40

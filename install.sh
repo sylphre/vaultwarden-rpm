@@ -11,7 +11,7 @@ case `uname -m` in
 esac
 
 EL_TARGET_VERSION=9
-BASEURL=https://vaultwarden-rpm.pages.dev
+BASEURL=https://sylphre.github.io/vaultwarden-rpm
 KEYNAME=RPM-GPG-KEY-vaultwarden-rpm
 GPGKEY=$BASEURL/$KEYNAME
 KEYRING=/etc/pki/rpm-gpg/$KEYNAME

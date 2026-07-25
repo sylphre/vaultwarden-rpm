@@ -7,6 +7,10 @@ on:
   - workflow_dispatch
   - workflow_call
 
+env:
+  # where the gh-pages branch ends up being served from
+  PAGES_URL: https://sylphre.github.io/vaultwarden-rpm
+
 jobs:
   check-version:
     runs-on: ubuntu-latest
@@ -49,7 +53,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get -q update
-        sudo apt-get -qy install rpm createrepo-c
+        sudo apt-get -qy install rpm
 
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -66,7 +70,7 @@ jobs:
 
     - name: Import GPG key
       id: import_gpg
-      uses: gvtulder/ghaction-import-gpg@master
+      uses: crazy-max/ghaction-import-gpg@v6
       with:
         gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
         passphrase: ${{ secrets.GPG_PASSPHRASE }}
@@ -77,16 +81,15 @@ jobs:
       run: |
         python generate-files.py
 
-    - name: Download previous rpm files
-      env:
-        AWS_S3_ENDPOINT: ${{ secrets.AWS_S3_ENDPOINT }}
-        AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
-        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        AWS_REGION: auto
+    - name: List already published packages
       run: |
-        mkdir -p repo/el/${{ matrix.alma }}/${{ matrix.alma-arch }}
-        ./sync-s3.sh s3://${{ secrets.AWS_S3_BUCKET }}/el/${{ matrix.alma }} repo/el/${{ matrix.alma }}
+        # blobless, no-checkout clone: fetches the file *names* on gh-pages
+        # without downloading a single rpm
+        git clone --branch gh-pages --depth 1 --filter=blob:none --no-checkout \
+            https://github.com/${{ github.repository }}.git gh-pages-index \
+          && git -C gh-pages-index ls-tree -r --name-only HEAD > published.txt \
+          || touch published.txt
+        cat published.txt
 
     - name: Build vaultwarden .rpm
       env:
@@ -97,11 +100,12 @@ jobs:
         GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
       run: |
         PKG=vaultwarden-${{ env.VW_SERVER_VERSION_RPM }}.el${{ matrix.alma }}.${{ matrix.alma-arch }}.rpm
-        if [[ ! -f repo/el/${{ matrix.alma }}/${{ matrix.alma-arch }}/$PKG ]] ; then
+        mkdir -p dist/el/${{ matrix.alma }}/${{ matrix.alma-arch }}
+        if ! grep -qxF "el/${{ matrix.alma }}/${{ matrix.alma-arch }}/$PKG" published.txt ; then
           cd vaultwarden/
           ./build-in-docker.sh
           ../sign-rpm.sh vaultwarden-*.rpm
-          mv vaultwarden-*.rpm ../repo/el/${{ matrix.alma }}/${{ matrix.alma-arch }}/
+          mv vaultwarden-*.rpm ../dist/el/${{ matrix.alma }}/${{ matrix.alma-arch }}/
           cd ..
         fi
 
@@ -112,56 +116,28 @@ jobs:
         GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
       run: |
         PKG=vaultwarden-web-vault-${{ env.VW_WEB_VERSION_RPM }}.el${{ matrix.alma }}.noarch.rpm
-        if [[ ! -f repo/el/${{ matrix.alma }}/${{ matrix.alma-arch }}/$PKG ]] ; then
+        if ! grep -qxF "el/${{ matrix.alma }}/${{ matrix.alma-arch }}/$PKG" published.txt ; then
           cd vaultwarden-web-vault/
           make rpm DIST=.el${{ matrix.alma }}
           ../sign-rpm.sh out/noarch/vaultwarden-web-vault-*.rpm
-          mv out/noarch/vaultwarden-web-vault-*.rpm ../repo/el/${{ matrix.alma }}/${{ matrix.alma-arch }}/
+          mv out/noarch/vaultwarden-web-vault-*.rpm ../dist/el/${{ matrix.alma }}/${{ matrix.alma-arch }}/
           cd ..
         fi
 
-    - name: Export public key
-      run: |
-        gpg --armor --export ${{ steps.import_gpg.outputs.keyid }} > repo/RPM-GPG-KEY-vaultwarden-rpm
-
-    - name: Create yum repository
-      env:
-        GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-      run: |
-        cd repo/el/${{ matrix.alma }}/${{ matrix.alma-arch }}
-
-        createrepo_c --update --general-compress-type=gz .
-
-        # repo_gpgcheck=1 on the client side verifies this detached signature
-        rm -f repodata/repomd.xml.asc
-        gpg --batch --yes --pinentry-mode loopback \
-            --passphrase "${GPG_PASSPHRASE}" \
-            --digest-algo sha256 \
-            -u ${{ steps.import_gpg.outputs.keyid }} \
-            --detach-sign --armor repodata/repomd.xml
-
-        cd ../../../..
-
-    - name: Upload updated repo
-      env:
-        AWS_S3_ENDPOINT: ${{ secrets.AWS_S3_ENDPOINT }}
-        AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
-        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        AWS_REGION: auto
-      run: |
-        ./sync-s3.sh repo/ s3://${{ secrets.AWS_S3_BUCKET }}/
-
-    - name: Archive .rpm files, public keys, repodata
+    - name: Archive newly built .rpm files
       uses: actions/upload-artifact@v4
       with:
-        name: output-el${{ matrix.alma }}
-        path: repo/
+        name: rpms-el${{ matrix.alma }}
+        path: dist/
+        if-no-files-found: ignore
 
 
-  build-repo:
+  publish:
     runs-on: ubuntu-latest
     needs: build-rpms
+
+    permissions:
+      contents: write
 
     steps:
     - name: Install dependencies
@@ -177,62 +153,76 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-
     - name: Import GPG key
       id: import_gpg
-      uses: gvtulder/ghaction-import-gpg@master
+      uses: crazy-max/ghaction-import-gpg@v6
       with:
         gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
         passphrase: ${{ secrets.GPG_PASSPHRASE }}
 
-    - name: Download all workflow run artifacts
+    - name: Download newly built .rpm files
       uses: actions/download-artifact@v4
       with:
-        path: repo-src/
+        path: new-rpms/
 
-    - name: Show all files
+    - name: Check out the published repository
       run: |
-        find
-
-    - name: Create combined repository
-      run: |
+        git clone --branch gh-pages --depth 1 \
+            https://github.com/${{ github.repository }}.git repo \
+          || mkdir -p repo
+        rm -rf repo/.git
         mkdir -p repo/el
-        for release_dir in repo-src/output-el*/el ; do
-          cp -r $release_dir/* repo/el
+
+    - name: Add the new packages
+      run: |
+        shopt -s nullglob
+        for dir in new-rpms/rpms-el*/el ; do
+          cp -r "$dir/." repo/el/
+        done
+        find repo/el -name '*.rpm' | sort
+
+    - name: Create yum repositories
+      env:
+        GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+      run: |
+        shopt -s nullglob
+        for dir in repo/el/*/x86_64 ; do
+          createrepo_c --update --general-compress-type=gz "$dir"
+
+          # repo_gpgcheck=1 on the client side verifies this detached signature
+          rm -f "$dir/repodata/repomd.xml.asc"
+          gpg --batch --yes --pinentry-mode loopback \
+              --passphrase "${GPG_PASSPHRASE}" \
+              --digest-algo sha256 \
+              -u ${{ steps.import_gpg.outputs.keyid }} \
+              --detach-sign --armor "$dir/repodata/repomd.xml"
         done
 
     - name: Export public key
       run: |
         gpg --armor --export ${{ steps.import_gpg.outputs.keyid }} > repo/RPM-GPG-KEY-vaultwarden-rpm
 
-    - name: Upload updated repo
-      env:
-        AWS_S3_ENDPOINT: ${{ secrets.AWS_S3_ENDPOINT }}
-        AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
-        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        AWS_REGION: auto
+    - name: Build the repository index
       run: |
-        ./sync-s3.sh repo/ s3://${{ secrets.AWS_S3_BUCKET }}/
+        ./build-pages.sh repo
+
+    - name: Push to gh-pages
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: |
+        cd repo
+        # a fresh history every run: the branch keeps the files, not the churn
+        git init -q -b gh-pages
+        git config user.name "GitHub Actions Bot"
+        git config user.email "<>"
+        git add -A
+        git commit -q -m "Update repository ($(date -u +%Y-%m-%d))"
+        git push -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" gh-pages
 
     - name: Archive repository files
       uses: actions/upload-artifact@v4
       with:
         name: combined-repository
-        path: repo/
-
-
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build-repo
-
-    steps:
-      - name: Deploy to Cloudflare
-        env:
-          CLOUDFLARE_DEPLOY_HOOK: ${{ secrets.CLOUDFLARE_DEPLOY_HOOK }}
-        run: |
-          curl -X POST "${CLOUDFLARE_DEPLOY_HOOK}"
+        path: |
+          repo/
+          !repo/.git

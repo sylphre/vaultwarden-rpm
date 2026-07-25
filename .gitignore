@@ -1,1 +1,11 @@
 .*.swp
+
+# build artefacts
+/vaultwarden/out/
+/vaultwarden/vaultwarden.tar.gz
+/vaultwarden/*.rpm
+/vaultwarden-web-vault/out/
+/vaultwarden-web-vault/bw_web_*.tar.gz
+/vaultwarden-web-vault/*.rpm
+/repo/
+/github.env

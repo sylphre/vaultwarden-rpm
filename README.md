@@ -2,7 +2,7 @@
 
 This repository contains rpm packages of [Vaultwarden](https://github.com/dani-garcia/vaultwarden), a Bitwarden-compatible API server written in Rust. They can be installed in AlmaLinux and other Enterprise Linux rebuilds (Rocky Linux, RHEL, Oracle Linux).
 
-It is a port of [gvtulder/vaultwarden-deb](https://github.com/gvtulder/vaultwarden-deb) to rpm, keeping the same repository layout: the `debian/` directories are replaced by `rpm/` directories holding a spec file, and `dpkg-buildpackage` by `rpmbuild --build-in-place`.
+It is a port of [gvtulder/vaultwarden-deb](https://github.com/gvtulder/vaultwarden-deb) to rpm, keeping the same repository layout: the `debian/` directories are replaced by `rpm/` directories holding a spec file, and `dpkg-buildpackage` by `rpmbuild --build-in-place`. The published repository lives on GitHub Pages (`gh-pages` branch) instead of S3 + Cloudflare Pages.
 
 The server binary is compiled from the upstream sources inside an AlmaLinux container, so it links against the DB client libraries of the target release.
 
@@ -21,17 +21,17 @@ Use `dnf install vaultwarden` to install both.
 
 To install Vaultwarden and add this repository, run this for AlmaLinux 9:
 ```bash
-curl -sSfL https://vaultwarden-rpm.pages.dev/el/9/install.sh | sudo bash
+curl -sSfL https://sylphre.github.io/vaultwarden-rpm/el/9/install.sh | sudo bash
 sudo dnf install vaultwarden
 ```
 
 For AlmaLinux 10:
 ```bash
-curl -sSfL https://vaultwarden-rpm.pages.dev/el/10/install.sh | sudo bash
+curl -sSfL https://sylphre.github.io/vaultwarden-rpm/el/10/install.sh | sudo bash
 sudo dnf install vaultwarden
 ```
 
-The packages can also be downloaded manually from the [repository web page](https://vaultwarden-rpm.pages.dev/).
+The packages can also be downloaded manually from the [repository web page](https://sylphre.github.io/vaultwarden-rpm/).
 
 ## Important configuration
 
@@ -90,3 +90,20 @@ VW_WEB_VERSION=v2026.6.4 make rpm DIST=.el9
 
 `generate-files.py` bumps `Version:`, resets `Release:` and prepends a
 `%changelog` entry in both spec files when upstream publishes a new release.
+
+## Repository setup
+
+The `build.yaml` workflow needs two secrets and one repository setting:
+
+| Secret | Contents |
+| --- | --- |
+| `GPG_PRIVATE_KEY` | ASCII-armored private signing key |
+| `GPG_PASSPHRASE` | Its passphrase |
+
+Both the rpm files (`rpmsign --addsign`) and the repository metadata
+(`repodata/repomd.xml.asc`) are signed with that key, which is why the
+generated `install.sh` sets both `gpgcheck=1` and `repo_gpgcheck=1`.
+
+The `publish` job force-pushes the finished repository tree to the `gh-pages`
+branch, one commit per run. Set **Settings > Pages > Source** to *Deploy from a
+branch*, `gh-pages` / `/ (root)`.
