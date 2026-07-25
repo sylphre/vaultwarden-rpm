@@ -37,7 +37,7 @@ jobs:
           echo "Upstream update found."
           git config user.name "GitHub Actions Bot"
           git config user.email "<>"
-          git add vaultwarden-web-vault/debian/changelog vaultwarden/debian/changelog vaultwarden/debian/control
+          git add vaultwarden-web-vault/rpm/vaultwarden-web-vault.spec vaultwarden/rpm/vaultwarden.spec
           git status
           git commit -m "Update to server ${VW_SERVER_VERSION} and web vault ${VW_WEB_VERSION}."
           git push

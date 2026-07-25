@@ -1,4 +1,4 @@
-# https://wiki.debian.org/DebianRepository/UseThirdParty
+# https://docs.fedoraproject.org/en-US/quick-docs/adding-or-removing-software-repositories-in-fedora/
 # based on code from https://github.com/retorquere/zotero-deb
 
 case `uname -m` in
@@ -10,14 +10,13 @@ case `uname -m` in
     ;;
 esac
 
-export GNUPGHOME="/dev/null"
-
-DEBIAN_TARGET_VERSION=bullseye
-BASEURL=https://github.com/gvtulder/vaultwarden-deb/releases/download/apt-${DEBIAN_TARGET_VERSION}
-RELEASE=./
-KEYNAME=vaultwarden-deb-repo-keyring.gpg
+EL_TARGET_VERSION=9
+BASEURL=https://vaultwarden-rpm.pages.dev
+KEYNAME=RPM-GPG-KEY-vaultwarden-rpm
 GPGKEY=$BASEURL/$KEYNAME
-KEYRING=/usr/share/keyrings/$KEYNAME
+KEYRING=/etc/pki/rpm-gpg/$KEYNAME
+
+sudo mkdir -p /etc/pki/rpm-gpg
 if [ -x "$(command -v curl)" ]; then
   sudo curl -L $GPGKEY -o $KEYRING
 elif [ -x "$(command -v wget)" ]; then
@@ -28,9 +27,17 @@ else
 fi
 
 sudo chmod 644 $KEYRING
+sudo rpm --import $KEYRING
 
-cat << EOF | sudo tee /etc/apt/sources.list.d/vaultwarden-deb-repo.list
-deb [signed-by=$KEYRING by-hash=force] $BASEURL $RELEASE
+# \$basearch stays unexpanded on purpose: dnf resolves it at run time.
+cat << EOF | sudo tee /etc/yum.repos.d/vaultwarden-rpm.repo
+[vaultwarden]
+name=Vaultwarden RPM repository (EL ${EL_TARGET_VERSION})
+baseurl=$BASEURL/el/$EL_TARGET_VERSION/\$basearch
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=file://$KEYRING
 EOF
 
-sudo apt-get clean
+sudo dnf clean all

@@ -5,11 +5,12 @@ set -e
 mkdir -p repo
 ./sync-s3.sh s3://${AWS_S3_BUCKET}/ repo/
 
-for release in bullseye bookworm trixie ; do
-  cp install.sh repo/dists/$release/install.sh
-  sed -i 's/DEBIAN_TARGET_VERSION=[a-z]+/DEBIAN_TARGET_VERSION='$release'/' repo/dists/$release/install.sh
-  sed -i 's/BASEURL=.\+/BASEURL=https:\/\/vaultwarden-deb.pages.dev/' repo/dists/$release/install.sh
-  sed -i 's/RELEASE=.\+/RELEASE="'$release' main"/' repo/dists/$release/install.sh
+cp install.sh repo/install.sh
+
+for release in 9 10 ; do
+  mkdir -p repo/el/$release
+  cp install.sh repo/el/$release/install.sh
+  sed -i 's/EL_TARGET_VERSION=[0-9]\+/EL_TARGET_VERSION='$release'/' repo/el/$release/install.sh
 done
 
 cp 404.html repo/
@@ -17,4 +18,3 @@ cp 404.html repo/
 cd repo/
 
 python ../build-pages-html.py > index.html
-

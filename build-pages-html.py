@@ -2,35 +2,37 @@ import datetime
 import glob
 import re
 import os.path
-import packaging.version
 
 
 # generates the index page for the repository
 
 
-DEBIAN_RELEASES = {
-    "trixie": { "version": 13, "archived": False },
-    "bookworm": { "version": 12, "archived": False },
-    "bullseye": { "version": 11, "archived": True },
+EL_RELEASES = {
+    "10": { "name": "AlmaLinux 10", "archived": False },
+    "9": { "name": "AlmaLinux 9", "archived": False },
 }
-ARCHITECTURES = [ "amd64" ]
+ARCHITECTURES = [ "x86_64" ]
+# vaultwarden-web-vault is noarch, but published next to the x86_64 packages
+PACKAGE_ARCH = { "vaultwarden": "x86_64", "vaultwarden-web-vault": "noarch" }
 
-IGNORED_PATHS = set([ "by-hash", "index.html", "404.html" ])
+IGNORED_PATHS = set([ "repodata", "index.html", "404.html" ])
 
 
-def get_version(filename):
-    m = re.match(".+_([^_]+)_[^_]+\.deb", filename)
-    if m:
-        return packaging.version.parse(m[1])
-    else:
-        return filename
+def version_key(filename):
+    """Sort key over the version-release part of an rpm file name."""
+    m = re.match(r".+-([^-]+-[^-]+)\.[^.]+\.rpm$", os.path.basename(filename))
+    text = m[1] if m else os.path.basename(filename)
+    # numeric runs sort above alphabetic ones, roughly like rpmvercmp
+    return [(1, int(p)) if p.isdigit() else (0, p)
+            for p in re.findall(r"[0-9]+|[a-zA-Z]+", text)]
 
 
 latest_versions = {}
-for release in DEBIAN_RELEASES:
+for release in EL_RELEASES:
     for arch in ARCHITECTURES:
         latest_versions[(release, arch)] = [
-            sorted(glob.glob(f"dists/{release}/main/binary-{arch}/{package}_*.deb"), key=get_version)[-1]
+            sorted(glob.glob(f"el/{release}/{arch}/{package}-[0-9]*.{PACKAGE_ARCH[package]}.rpm"),
+                   key=version_key)[-1]
             for package in ("vaultwarden", "vaultwarden-web-vault")
         ]
 
@@ -38,7 +40,7 @@ for release in DEBIAN_RELEASES:
 print("""
 <!doctype html>
 <html>
-  <head><title>Vaultwarden deb repository</title>
+  <head><title>Vaultwarden rpm repository</title>
   <style type="text/css">
 body {
   font-family: sans-serif;
@@ -87,12 +89,12 @@ a:hover {
   </style>
 </head>
 <body>
-<h1>Vaultwarden deb repository</h1>
+<h1>Vaultwarden rpm repository</h1>
 <p>
-This repository contains deb packages of Vaultwarden, a Bitwarden-compatible API server written in Rust. They can be installed in Debian or Ubuntu.
+This repository contains rpm packages of Vaultwarden, a Bitwarden-compatible API server written in Rust. They can be installed in AlmaLinux and other Enterprise Linux rebuilds.
 </p>
 <p>
-See the <a href="https://github.com/gvtulder/vaultwarden-deb/">GitHub repository</a> for more information.
+See the <a href="https://github.com/sylphre/vaultwarden-rpm/">GitHub repository</a> for more information.
 </p>
 
 <hr>
@@ -104,8 +106,8 @@ See the <a href="https://github.com/gvtulder/vaultwarden-deb/">GitHub repository
 
 for idx, ((release, arch), files) in enumerate(latest_versions.items()):
     print('  <tr class="current">')
-    print(f'    <th class="release">Debian {DEBIAN_RELEASES[release]["version"]} ({release})</th>')
-    if DEBIAN_RELEASES[release]["archived"]:
+    print(f'    <th class="release">{EL_RELEASES[release]["name"]} (el{release})</th>')
+    if EL_RELEASES[release]["archived"]:
         print(f'    <th>archived</th>')
     else:
         print(f'    <th></th>')
@@ -127,14 +129,13 @@ Repository updated on """ + datetime.datetime.now().strftime('%Y.%m.%d') + """.
 """)
 
 
-for release, info in DEBIAN_RELEASES.items():
+for release, info in EL_RELEASES.items():
     if not info["archived"]:
         print("""
-<p>To install Vaultwarden and add this repository, run this for Debian """ + f'{info["version"]} ({release})' + """:</p>
+<p>To install Vaultwarden and add this repository, run this for """ + f'{info["name"]} (el{release})' + """:</p>
 <pre>
-wget -qO- https://vaultwarden-deb.pages.dev/dists/""" + release + """/install.sh | sudo bash
-sudo apt update
-sudo apt install vaultwarden
+curl -sSfL https://vaultwarden-rpm.pages.dev/el/""" + release + """/install.sh | sudo bash
+sudo dnf install vaultwarden
 </pre>
 """)
 
@@ -162,51 +163,6 @@ def print_file_tree(path=".", indent=""):
 
 
 print_file_tree()
-
-
-"""
-  <li><a href="vaultwarden-deb-repo-keyring.asc">vaultwarden-deb-repo-keyring.asc</a></li>
-  <li><a href="vaultwarden-deb-repo-keyring.gpg">vaultwarden-deb-repo-keyring.gpg</a></li>
-  <li>
-    bookworm (12)
-    <ul>
-      <li><a href="dists/bookworm/InRelease">InRelease</a></li>
-      <li><a href="dists/bookworm/Release">Release</a></li>
-      <li><a href="dists/bookworm/Release.gpg">Release.gpg</a></li>
-      <li>
-        binary-amd64
-        <ul>
-          <li><a href="dists/bookworm/InRelease">InRelease</a></li>
-          <li><a href="dists/bookworm/Release">Release</a></li>
-          <li><a href="dists/bookworm/Release.gpg">Release.gpg</a></li>
-          <li><a href="dists/bookworm/InRelease">InRelease</a></li>
-          <li><a href="dists/bookworm/Release">Release</a></li>
-          <li><a href="dists/bookworm/Release.gpg">Release.gpg</a></li>
-        </ul>
-      </li>
-    </ul>
-  </li>
-  <li>
-    bookworm (12)
-    <ul>
-      <li><a href="dists/bookworm/InRelease">InRelease</a></li>
-      <li><a href="dists/bookworm/Release">Release</a></li>
-      <li><a href="dists/bookworm/Release.gpg">Release.gpg</a></li>
-      <li>
-        binary-amd64
-        <ul>
-          <li><a href="dists/bookworm/main/binary-amd64/vaultwarden_1.28.0-1_amd64.deb">vaultwarden_1.28.0-1_amd64.deb</a></li>
-          <li><a href="dists/bookworm/main/binary-amd64/vaultwarden_1.28.1-1_amd64.deb">vaultwarden_1.28.1-1_amd64.deb</a></li>
-          <li><a href="dists/bookworm/main/binary-amd64/vaultwarden_1.29.0-1_amd64.deb">vaultwarden_1.29.0-1_amd64.deb</a></li>
-          <li><a href="dists/bookworm/main/binary-amd64/vaultwarden_1.29.1-1_amd64.deb">vaultwarden_1.29.1-1_amd64.deb</a></li>
-          <li><a href="dists/bookworm/main/binary-amd64/vaultwarden_1.29.2-1_amd64.deb">vaultwarden_1.29.2-1_amd64.deb</a></li>
-          <li><a href="dists/bookworm/main/binary-amd64/vaultwarden_1.30.0-1_amd64.deb">vaultwarden_1.30.0-1_amd64.deb</a></li>
-          <li><a href="dists/bookworm/main/binary-amd64/vaultwarden_1.30.1-1_amd64.deb">vaultwarden_1.30.1-1_amd64.deb</a></li>
-        </ul>
-      </li>
-    </ul>
-  </li>
-"""
 
 print("""
 </ul>

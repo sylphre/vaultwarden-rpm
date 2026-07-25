@@ -1,10 +1,10 @@
 [Unit]
 Description=Bitwarden Server (Rust Edition)
 Documentation=https://github.com/dani-garcia/vaultwarden
-# If you use a database like mariadb,mysql or postgresql, 
-# you have to add them like the following and uncomment them 
-# by removing the `# ` before it. This makes sure that your 
-# database server is started before vaultwarden ("After") and has 
+# If you use a database like mariadb,mysql or postgresql,
+# you have to add them like the following and uncomment them
+# by removing the `# ` before it. This makes sure that your
+# database server is started before vaultwarden ("After") and has
 # started successfully before starting vaultwarden ("Requires").
 
 # Only sqlite
@@ -41,7 +41,7 @@ ProtectHome=true
 ProtectSystem=strict
 # Only allow writes to the following directory and set it to the working directory (user and password data are stored here)
 WorkingDirectory=/var/lib/vaultwarden
-ReadWriteDirectories=/var/lib/vaultwarden /var/log/vaultwarden
+ReadWritePaths=/var/lib/vaultwarden /var/log/vaultwarden
 # Allow vaultwarden to bind ports in the range of 0-1024
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 

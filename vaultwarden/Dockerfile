@@ -1,35 +1,50 @@
 # Based on vaultwarden Dockerfile
 
-# e.g., rust:1.55-buster
-ARG rust_image
+# e.g., almalinux:9
+ARG base_image
+# Toolchain is pulled through rustup: the rust-toolset stream shipped in the
+# AlmaLinux AppStream lags behind what recent vaultwarden releases require.
+ARG rust_version=1.89.0
 
-FROM ${rust_image} AS build
+FROM ${base_image} AS build
 
-# Debian-based builds support multidb
+# EL-based builds support multidb
 ARG DB=sqlite,mysql,postgresql
+ARG rust_version
 
-# Build time options to avoid dpkg warnings and help with reproducible builds.
-ENV DEBIAN_FRONTEND=noninteractive \
-    LANG=C.UTF-8 \
+ENV LANG=C.UTF-8 \
     TZ=UTC \
     TERM=xterm-256color \
     CARGO_HOME="/root/.cargo" \
+    RUSTUP_HOME="/root/.rustup" \
+    PATH="/root/.cargo/bin:${PATH}" \
     USER="root"
 
-# Create CARGO_HOME folder and don't download rust docs
-RUN mkdir -pv "${CARGO_HOME}" \
-    && rustup set profile minimal
+# Install build tooling, DB client libraries and the rpm build stack
+RUN dnf -y install \
+        gcc \
+        gcc-c++ \
+        make \
+        pkgconf-pkg-config \
+        openssl-devel \
+        mariadb-connector-c-devel \
+        libpq-devel \
+        rpm-build \
+        systemd-rpm-macros \
+        git \
+        tar \
+        gzip \
+        wget \
+    && dnf clean all \
+    && rm -rf /var/cache/dnf
 
-# Install DB packages
-RUN apt-get update \
-    && apt-get install -y \
-        --no-install-recommends \
-        libmariadb-dev \
-        libpq-dev \
-        build-essential \
-        debhelper \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+# mysqlclient-sys looks for mysql_config; the EL connector package installs it
+# as mariadb_config only on some releases.
+RUN [ -e /usr/bin/mysql_config ] || ln -s mariadb_config /usr/bin/mysql_config
+
+# Install the pinned Rust toolchain, minimal profile, no rust docs
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+      | sh -s -- -y --profile minimal --default-toolchain ${rust_version}
 
 WORKDIR /app
 
@@ -44,8 +59,5 @@ RUN touch src/main.rs
 # Build the project
 RUN cargo build --features ${DB} --release
 
-# Build the deb package
-RUN make deb
-RUN mkdir /out
-RUN cp /*.deb /out
-
+# Build the rpm package
+RUN make rpm RPM_OUTPUT_DIR=/out

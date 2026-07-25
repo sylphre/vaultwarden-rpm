@@ -3,19 +3,22 @@ set -e
 set -x
 
 SOURCE_URL=https://github.com/dani-garcia/vaultwarden/archive/refs/tags/${VW_SERVER_VERSION}.tar.gz
-RUST_IMAGE=rust:1.89-${DEBIAN_TARGET_VERSION}
+BASE_IMAGE=almalinux:${ALMA_TARGET_VERSION}
+RUST_VERSION=${RUST_VERSION:-1.89.0}
 
 # download latest source
 wget -O vaultwarden.tar.gz $SOURCE_URL
 
 # build docker image
-docker build --build-arg rust_image=$RUST_IMAGE -t vaultwarden .
+docker build --build-arg base_image=$BASE_IMAGE \
+             --build-arg rust_version=$RUST_VERSION \
+             -t vaultwarden-rpm .
 
 # extract files
-docker create --name vw vaultwarden
+docker create --name vw vaultwarden-rpm
 docker cp vw:/out .
 docker rm vw
-docker image rm vaultwarden
+docker image rm vaultwarden-rpm
 
-mv out/vaultwarden_*.deb .
-
+# rpmbuild writes to <_rpmdir>/<arch>/
+mv out/x86_64/vaultwarden-*.rpm .
